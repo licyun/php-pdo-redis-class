@@ -6,6 +6,8 @@
  * Time: 16:13
  */
 
+require_once("RedisConnect.php");
+define("CACHETIME", 60*60);     #缓存时间
 /**
  * 封装PDODB类
  */
@@ -119,24 +121,35 @@ class PDODB{
         //过滤不符合条件格式的数据
         if (empty($sql) || !is_string($sql))
             return false;
-
-        try{
-            //预处理
-            $stmt = $this->pdo->prepare($sql);
-            //执行绑定参数并取出结果
-            $stmt->execute();
-            //判断是否返回一条结果
-            if ($one){
-                $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            }else{
-                $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        //拼接sql组成redis 的 key
+        $temsql = "queryNoParam".$sql;
+        $key = md5($temsql);
+        // 获取redis单例
+        $redis = RedisConnect::getRedisInstance();
+        //redis缓存判断
+        if( $redis->exists($key)){
+            $result = unserialize($redis->get($key));
+        }else{
+            try{
+                //预处理
+                $stmt = $this->pdo->prepare($sql);
+                //执行绑定参数并取出结果
+                $stmt->execute();
+                //判断是否返回一条结果
+                if ($one){
+                    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                }else{
+                    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                }
+                //存储redis
+                $redis->set($key, serialize($result));
+                $redis->expire($key, CACHETIME);
+                // 关闭游标，释放结果集
+                $stmt->closeCursor();
+            }catch(PDOException $e) {
+                $this->my_error($e);
             }
-            // 关闭游标，释放结果集
-            $stmt->closeCursor();
-        }catch(PDOException $e) {
-            $this->my_error($e);
         }
-
         return $result;
     }
 
@@ -150,24 +163,35 @@ class PDODB{
         //过滤不符合条件格式的数据
         if (empty($sql) || !is_string($sql))
             return false;
-
-        try{
-            //预处理
-            $stmt = $this->pdo->prepare($sql);
-            //执行绑定参数并取出结果
-            $stmt->execute();
-            //判断是否返回一条结果
-            if ($one){
-                $result = $stmt->fetch(PDO::FETCH_OBJ);
-            }else{
-                $result = $stmt->fetchAll(PDO::FETCH_OBJ);
+        //拼接sql组成redis 的 key
+        $temsql = "queryObjectNoParam".$sql;
+        $key = md5($temsql);
+        // 获取redis单例
+        $redis = RedisConnect::getRedisInstance();
+        //redis缓存判断
+        if( $redis->exists($key)){
+            $result = unserialize($redis->get($key));
+        }else{
+            try{
+                //预处理
+                $stmt = $this->pdo->prepare($sql);
+                //执行绑定参数并取出结果
+                $stmt->execute();
+                //判断是否返回一条结果
+                if ($one){
+                    $result = $stmt->fetch(PDO::FETCH_OBJ);
+                }else{
+                    $result = $stmt->fetchAll(PDO::FETCH_OBJ);
+                }
+                //存储redis
+                $redis->set($key, serialize($result));
+                $redis->expire($key, CACHETIME);
+                // 关闭游标，释放结果集
+                $stmt->closeCursor();
+            }catch(PDOException $e) {
+                $this->my_error($e);
             }
-            // 关闭游标，释放结果集
-            $stmt->closeCursor();
-        }catch(PDOException $e) {
-            $this->my_error($e);
         }
-
         return $result;
     }
 
@@ -182,29 +206,44 @@ class PDODB{
         //过滤不符合条件格式的数据
         if (!is_array($data) || empty($sql) || !is_string($sql))
             return false;
-
-        try{
-            //预处理
-            $stmt = $this->pdo->prepare($sql);
-            //遍历绑定参数
-            foreach ($data as $key => $value)
-            {
-                $stmt->bindParam($key, $value);   //绑定参数，$stmt是预处理对象
-            }
-            //执行绑定参数并取出结果
-            $stmt->execute();
-            //判断是否返回一条结果
-            if ($one){
-                $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            }else{
-                $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            }
-            // 关闭游标，释放结果集
-            $stmt->closeCursor();
-        }catch(PDOException $e) {
-            $this->my_error($e);
+        //拼接sql组成redis 的 key
+        $temsql = "queryArrayParam".$sql;
+        foreach ($data as $key => $value)
+        {
+            $temsql = $temsql.$key.$value;
         }
-
+        $key = md5($temsql);
+        // 获取redis单例
+        $redis = RedisConnect::getRedisInstance();
+        //redis缓存判断
+        if( $redis->exists($key)){
+            $result = unserialize($redis->get($key));
+        }else{
+            try{
+                //预处理
+                $stmt = $this->pdo->prepare($sql);
+                //遍历绑定参数
+                foreach ($data as $key => $value)
+                {
+                    $stmt->bindParam($key, $value);   //绑定参数，$stmt是预处理对象
+                }
+                //执行绑定参数并取出结果
+                $stmt->execute();
+                //判断是否返回一条结果
+                if ($one){
+                    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                }else{
+                    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                }
+                //存储redis
+                $redis->set($key, serialize($result));
+                $redis->expire($key, CACHETIME);
+                // 关闭游标，释放结果集
+                $stmt->closeCursor();
+            }catch(PDOException $e) {
+                $this->my_error($e);
+            }
+        }
         return $result;
     }
 
@@ -219,29 +258,44 @@ class PDODB{
         //过滤不符合条件格式的数据
         if (!is_array($data) || empty($sql) || !is_string($sql))
             return false;
-
-        try{
-            //预处理
-            $stmt = $this->pdo->prepare($sql);
-            //遍历绑定参数
-            foreach ($data as $key => $value)
-            {
-                $stmt->bindParam($key, $value);   //绑定参数，$stmt是预处理对象
-            }
-            //执行绑定参数并取出结果
-            $stmt->execute();
-            //判断是否返回一条结果
-            if ($one){
-                $result = $stmt->fetch(PDO::FETCH_OBJ);
-            }else{
-                $result = $stmt->fetchAll(PDO::FETCH_OBJ);
-            }
-            // 关闭游标，释放结果集
-            // $stmt->closeCursor();
-        }catch(PDOException $e) {
-            $this->my_error($e);
+        //拼接sql组成redis 的 key
+        $temsql = "queryObjectArrayParam".$sql;
+        foreach ($data as $key => $value)
+        {
+            $temsql = $temsql.$key.$value;
         }
-
+        $key = md5($temsql);
+        // 获取redis单例
+        $redis = RedisConnect::getRedisInstance();
+        //redis缓存判断
+        if( $redis->exists($key)){
+            $result = unserialize($redis->get($key));
+        }else{
+            try{
+                //预处理
+                $stmt = $this->pdo->prepare($sql);
+                //遍历绑定参数
+                foreach ($data as $key => $value)
+                {
+                    $stmt->bindParam($key, $value);   //绑定参数，$stmt是预处理对象
+                }
+                //执行绑定参数并取出结果
+                $stmt->execute();
+                //判断是否返回一条结果
+                if ($one){
+                    $result = $stmt->fetch(PDO::FETCH_OBJ);
+                }else{
+                    $result = $stmt->fetchAll(PDO::FETCH_OBJ);
+                }
+                //存储redis
+                $redis->set($key, serialize($result));
+                $redis->expire($key, CACHETIME);
+                // 关闭游标，释放结果集
+                // $stmt->closeCursor();
+            }catch(PDOException $e) {
+                $this->my_error($e);
+            }
+        }
         return $result;
     }
 
